@@ -1,0 +1,183 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nada Virtual Grid</title>
+<style>
+  body {
+    margin:0;
+    overflow:hidden;
+    background:black;
+    color:white;
+    font-family:sans-serif;
+  }
+  video {
+    display:none;
+  }
+  canvas {
+    position:fixed;
+    top:0;
+    left:0;
+    width:100vw;
+    height:100vh;
+  }
+  #buttons {
+    position:fixed;
+    top:20px;
+    left:50%;
+    transform:translateX(-50%);
+    display:grid;
+    grid-template-columns: repeat(2, 120px); /* 2 kolom */
+    grid-gap:10px;
+    z-index:10;
+  }
+  .noteBtn {
+    background:rgba(255,255,255,0.2);
+    color:white;
+    padding:20px 10px;
+    border:1px solid white;
+    border-radius:12px;
+    font-size:20px;
+    text-align:center;
+    cursor:pointer;
+    user-select:none;
+    width:120px;
+  }
+  .noteBtn:hover {
+    background:rgba(255,255,255,0.4);
+  }
+  .active {
+    background:rgba(0,255,0,0.5)!important;
+  }
+  #status {
+    position:fixed;
+    bottom:20px;
+    left:50%;
+    transform:translateX(-50%);
+    background:rgba(0,0,0,0.5);
+    padding:10px 20px;
+    border-radius:8px;
+    font-size:18px;
+    z-index:10;
+  }
+</style>
+</head>
+<body>
+  <video id="input_video"></video>
+  <canvas id="output_canvas"></canvas>
+
+  <div id="buttons">
+    <div class="noteBtn">🖐️ Do</div>
+    <div class="noteBtn">✌️ Re</div>
+    <div class="noteBtn">👌 Mi</div>
+    <div class="noteBtn">🤟 Fa</div>
+    <div class="noteBtn">🖖 Sol</div>
+    <div class="noteBtn">🤙 La</div>
+    <div class="noteBtn">👍 Si</div>
+    <div class="noteBtn">👏 Do</div>
+  </div>
+
+  <div id="status">Nada: -</div>
+
+  <!-- Mediapipe -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<script>
+const videoElement = document.getElementById("input_video");
+const canvasElement = document.getElementById("output_canvas");
+const canvasCtx = canvasElement.getContext("2d");
+const uiDiv = document.getElementById("status");
+
+canvasElement.width = window.innerWidth;
+canvasElement.height = window.innerHeight;
+
+// nada frekuensi
+const freqs = [261.63,293.66,329.63,349.23,392.00,440.00,493.88,523.25];
+
+// audio context
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playNoteFreq(freq){
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  gain.gain.setValueAtTime(0.3,audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.5);
+  osc.stop(audioCtx.currentTime+0.5);
+}
+
+// tombol klik manual
+const btns = document.querySelectorAll('.noteBtn');
+btns.forEach((btn,idx)=>{
+  btn.addEventListener('click',()=>{
+    audioCtx.resume();
+    playNoteFreq(freqs[idx]);
+    uiDiv.textContent = `Nada: ${btn.textContent}`;
+  });
+});
+
+// klik virtual via tangan
+let lastClickTime = 0;
+function checkFingerClick(fx, fy){
+  const now = Date.now();
+  if(now - lastClickTime < 600) return; // cooldown
+  btns.forEach((btn,idx)=>{
+    const rect = btn.getBoundingClientRect();
+    if(fx > rect.left && fx < rect.right && fy > rect.top && fy < rect.bottom){
+      audioCtx.resume();
+      playNoteFreq(freqs[idx]);
+      uiDiv.textContent = `Nada: ${btn.textContent} (Virtual)`;
+      btn.classList.add('active');
+      setTimeout(()=>btn.classList.remove('active'),300);
+      lastClickTime = now;
+    }
+  });
+}
+
+function onResults(results){
+  canvasCtx.save();
+  canvasCtx.clearRect(0,0,canvasElement.width,canvasElement.height);
+  canvasCtx.drawImage(results.image,0,0,canvasElement.width,canvasElement.height);
+  if(results.multiHandLandmarks){
+    for(const landmarks of results.multiHandLandmarks){
+      drawConnectors(canvasCtx,landmarks,HAND_CONNECTIONS,{color:'#00FF00',lineWidth:2});
+      drawLandmarks(canvasCtx,landmarks,{color:'#FF0000',lineWidth:1});
+      // ambil telunjuk
+      const indexFinger = landmarks[8];
+      const fx = indexFinger.x * window.innerWidth;
+      const fy = indexFinger.y * window.innerHeight;
+      checkFingerClick(fx,fy);
+    }
+  }
+  canvasCtx.restore();
+}
+
+const hands = new Hands({
+  locateFile:(file)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+hands.setOptions({
+  maxNumHands:1,
+  modelComplexity:1,
+  minDetectionConfidence:0.7,
+  minTrackingConfidence:0.7
+});
+hands.onResults(onResults);
+
+const camera = new Camera(videoElement,{
+  onFrame:async()=>{
+    await hands.send({image:videoElement});
+  },
+  width:640,
+  height:480
+});
+camera.start();
+</script>
+</body>
+</html>
