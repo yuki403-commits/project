@@ -1,12 +1,141 @@
-<!-- HTML untuk Hand Tracker -->
-<video id="input_video"></video>
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hand Tracker — Dark Cosmic Galaxy</title>
+<link rel="icon" href="data:," />
+<style>
+  :root{
+    --accent1: #7be3ff;
+    --accent2: #c07bff;
+    --glass: rgba(255,255,255,0.04);
+    --glass-2: rgba(255,255,255,0.02);
+  }
+  html,body{height:100%;margin:0;background:#000;overflow:hidden;font-family:Inter,system-ui,Arial;color:#eaf6ff}
+  /* background starfield canvas (behind) */
+  #bgCanvas {
+    position:fixed; inset:0; z-index:0; display:block;
+    background: radial-gradient(ellipse at center, rgba(12,6,25,0.6) 0%, rgba(0,0,0,1) 70%);
+  }
+
+  /* mediapipe draw canvas */
+  #output_canvas {
+    position:fixed; inset:0; z-index:2; width:100vw; height:100vh; display:block;
+    mix-blend-mode: screen;
+  }
+
+  /* subtle nebula overlay */
+  .nebula {
+    position:fixed; inset:0; z-index:1; pointer-events:none;
+    background-image:
+      radial-gradient(600px 300px at 20% 20%, rgba(192,123,255,0.06), transparent 10%),
+      radial-gradient(900px 400px at 80% 70%, rgba(123,227,255,0.04), transparent 12%);
+    filter: blur(18px);
+    opacity:0.95;
+  }
+
+  /* UI top bar */
+  #uiBar {
+    position:fixed; left:16px; right:16px; top:16px; z-index:10;
+    display:flex; gap:10px; align-items:center;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    border-radius:14px; padding:8px; border:1px solid rgba(255,255,255,0.04);
+    backdrop-filter: blur(6px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+  }
+  .btn {
+    background: linear-gradient(90deg, var(--accent1), var(--accent2));
+    border: none; padding:8px 12px; border-radius:10px; color:#120016; font-weight:700; cursor:pointer;
+    box-shadow: 0 8px 30px rgba(124,100,200,0.12);
+  }
+  .toggle {
+    background: rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.03);
+    color: #dfe;
+    padding:8px 10px; border-radius:10px; cursor:pointer;
+  }
+  select { padding:8px 10px; border-radius:8px; border:none; background:var(--glass); color:#eaf6ff; }
+
+  #status {
+    margin-left:auto; font-size:13px; color:#d6f7ff; padding-right:8px;
+    text-shadow: 0 6px 30px rgba(124,100,200,0.06);
+  }
+
+  /* center HUD */
+  #hud {
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:11;
+    width: min(680px, 92vw); pointer-events:none; text-align:center;
+  }
+  #messageBox {
+    display:inline-block; padding:14px 20px; border-radius:14px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    border:1px solid rgba(255,255,255,0.04);
+    color:#eaf6ff; font-weight:600; font-size:18px;
+    box-shadow: 0 12px 40px rgba(50,30,80,0.25), 0 0 40px rgba(124,100,200,0.06);
+    backdrop-filter: blur(6px);
+  }
+
+  /* bottom speaker visual */
+  #voiceWave {
+    position:fixed; left:50%; bottom:28px; transform:translateX(-50%); z-index:12;
+    width:320px; height:24px; border-radius:16px; display:flex; gap:6px; align-items:center; justify-content:center;
+    pointer-events:none;
+  }
+  .bar { width:6px; background:linear-gradient(180deg,#7be3ff,#c07bff); height:6px; border-radius:6px; opacity:0.9; transition:height 120ms ease; }
+
+  /* portfolio button (clickable by finger too) */
+  #portfolio {
+    margin-left:12px; color:#eaf6ff; text-decoration:none; padding:8px 12px; border-radius:10px;
+    background: rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.03);
+    font-weight:700;
+  }
+  #portfolio.active { box-shadow: 0 10px 30px rgba(124,100,200,0.12); transform:scale(1.03); }
+
+  /* small debug */
+  #debug { position:fixed; left:16px; bottom:16px; z-index:13; font-size:12px; color:#cfe; background:rgba(0,0,0,0.45); padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03) }
+  @media(max-width:520px){
+    .btn{padding:6px 8px}
+    #voiceWave{width:220px}
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bgCanvas"></canvas>
+<div class="nebula"></div>
 <canvas id="output_canvas"></canvas>
 
-<div id="buttons">
-  <a href="https://tiktokrobotikaterbaik.netlify.app/" target="_blank" class="portfolioBtn">🌐 Buka Portofolio</a>
+<div id="uiBar">
+  <button id="startBtn" class="btn">Start (Depan)</button>
+  <button id="ttsToggle" class="toggle">TTS: ON</button>
+  <button id="skeletonToggle" class="toggle">Skeleton: ON</button>
+  <button id="palmToggle" class="toggle">Palm: ON</button>
+  <select id="modeSelect">
+    <option value="MID">MID (recommended)</option>
+    <option value="LOW">LOW (battery)</option>
+    <option value="HIGH">HIGH (quality)</option>
+  </select>
+  <a id="portfolio" href="https://tiktokrobotikaterbaik.netlify.app/" target="_blank">🌐 Portfolio</a>
+  <div id="status">Status: idle</div>
 </div>
 
-<div id="status">Arahkan jari telunjuk ke tombol.</div>
+<div id="hud">
+  <div id="messageBox">Arahkan tangan ke kamera untuk memicu suara.</div>
+</div>
+
+<div id="voiceWave" aria-hidden="true">
+  <div class="bar" style="height:6px"></div>
+  <div class="bar" style="height:6px"></div>
+  <div class="bar" style="height:6px"></div>
+  <div class="bar" style="height:6px"></div>
+  <div class="bar" style="height:6px"></div>
+</div>
+
+<div id="debug">video: <span id="vr">0</span> · mode: <span id="mval">MID</span></div>
+
+<!-- hidden video element for feed -->
+<video id="input_video" playsinline style="display:none"></video>
 
 <!-- Mediapipe -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
@@ -14,103 +143,311 @@
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
 <script>
-  const videoElement = document.getElementById("input_video");
-  const canvasElement = document.getElementById("output_canvas");
-  const canvasCtx = canvasElement.getContext("2d");
-  const uiDiv = document.getElementById("status");
+/* Dark Cosmic Galaxy — Hand Tracker with repeating TTS
+   - front camera (user)
+   - starfield background + nebula overlay
+   - glowing UI + wave visualization
+   - TTS plays each time a hand appears (repeat allowed with cooldown)
+*/
 
-  canvasElement.width = window.innerWidth;
-  canvasElement.height = window.innerHeight;
+const bgCanvas = document.getElementById('bgCanvas');
+const outCanvas = document.getElementById('output_canvas');
+const outCtx = outCanvas.getContext('2d');
+const videoEl = document.getElementById('input_video');
+const statusEl = document.getElementById('status');
+const messageBox = document.getElementById('messageBox');
+const vr = document.getElementById('vr');
+const mval = document.getElementById('mval');
+const portfolio = document.getElementById('portfolio');
+const ttsToggle = document.getElementById('ttsToggle');
+const startBtn = document.getElementById('startBtn');
+const skeletonToggle = document.getElementById('skeletonToggle');
+const palmToggle = document.getElementById('palmToggle');
+const modeSelect = document.getElementById('modeSelect');
+const bars = document.querySelectorAll('.bar');
+const debug = document.getElementById('debug');
 
-  const clickableEls = document.querySelectorAll('a, button, .portfolioBtn');
+let WIDTH = window.innerWidth, HEIGHT = window.innerHeight;
+bgCanvas.width = WIDTH; bgCanvas.height = HEIGHT;
+outCanvas.width = WIDTH; outCanvas.height = HEIGHT;
 
-  /* ---------------------------
-      TTS (Text to Speech)
-  ----------------------------*/
-  let hasSpoken = false;
-  function speakIntro(){
-    if(hasSpoken) return; // biar tidak ulang-ulang
-    hasSpoken = true;
+window.addEventListener('resize', ()=>{
+  WIDTH = window.innerWidth; HEIGHT = window.innerHeight;
+  bgCanvas.width = WIDTH; bgCanvas.height = HEIGHT;
+  outCanvas.width = WIDTH; outCanvas.height = HEIGHT;
+});
 
-    const msg = new SpeechSynthesisUtterance("Hallo, nama saya Arby");
-    msg.lang = "id-ID";
-    msg.rate = 1;  
-    msg.pitch = 1; 
-    speechSynthesis.speak(msg);
-  }
-
-  let lastClickTime = 0;
-  function checkFingerClick(fx, fy){
-    const now = Date.now();
-    if(now - lastClickTime < 800) return;
-    clickableEls.forEach((el)=>{
-      const rect = el.getBoundingClientRect();
-      if(fx > rect.left && fx < rect.right && fy > rect.top && fy < rect.bottom){
-        uiDiv.textContent = `Klik Virtual: ${el.textContent || el.href}`;
-        el.classList.add('active');
-        setTimeout(()=>el.classList.remove('active'),300);
-        el.click();
-        lastClickTime = now;
-      }
-    });
-  }
-
-  let lastScroll = Date.now();
-  function autoScroll(fy){
-    const now = Date.now();
-    if(now - lastScroll < 300) return;
-    if(fy < window.innerHeight * 0.2){
-      window.scrollBy({top:-150,behavior:'smooth'});
-      uiDiv.textContent = "Scroll ↑";
-    } else if(fy > window.innerHeight * 0.8){
-      window.scrollBy({top:150,behavior:'smooth'});
-      uiDiv.textContent = "Scroll ↓";
-    }
-    lastScroll = now;
-  }
-
-  function onResults(results){
-    canvasCtx.save();
-    canvasCtx.clearRect(0,0,canvasElement.width,canvasElement.height);
-    canvasCtx.drawImage(results.image,0,0,canvasElement.width,canvasElement.height);
-
-    if(results.multiHandLandmarks){
-      // ▶️ Suara muncul saat tangan terdeteksi pertama kali
-      speakIntro();
-
-      for(const landmarks of results.multiHandLandmarks){
-        drawConnectors(canvasCtx,landmarks,HAND_CONNECTIONS,{color:'#00FF00',lineWidth:2});
-        drawLandmarks(canvasCtx,landmarks,{color:'#FF0000',lineWidth:1});
-
-        const indexFinger = landmarks[8];
-        const fx = indexFinger.x * window.innerWidth;
-        const fy = indexFinger.y * window.innerHeight;
-
-        checkFingerClick(fx,fy);
-        autoScroll(fy);
-      }
-    }
-
-    canvasCtx.restore();
-  }
-
-  const hands = new Hands({
-    locateFile:(file)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+// ---------- starfield background ----------
+const bgCtx = bgCanvas.getContext('2d');
+const stars = [];
+const STAR_COUNT = Math.min(140, Math.round((WIDTH*HEIGHT)/15000)); // scale with screen
+for(let i=0;i<STAR_COUNT;i++){
+  stars.push({
+    x: Math.random()*WIDTH,
+    y: Math.random()*HEIGHT,
+    r: Math.random()*1.6 + 0.3,
+    vx: (Math.random()-0.5)*0.05,
+    vy: (Math.random()-0.5)*0.05,
+    alpha: Math.random()*0.9 + 0.1
   });
-  hands.setOptions({
-    maxNumHands:1,
-    modelComplexity:1,
-    minDetectionConfidence:0.7,
-    minTrackingConfidence:0.7
-  });
-  hands.onResults(onResults);
+}
+function updateStars(){
+  bgCtx.clearRect(0,0,WIDTH,HEIGHT);
+  // faint parallax galaxy gradient
+  const g = bgCtx.createRadialGradient(WIDTH*0.25, HEIGHT*0.2, 0, WIDTH*0.25, HEIGHT*0.2, Math.max(WIDTH,HEIGHT));
+  g.addColorStop(0, 'rgba(160,80,220,0.06)');
+  g.addColorStop(0.5, 'rgba(30,5,40,0.04)');
+  g.addColorStop(1, 'rgba(0,0,0,1)');
+  bgCtx.fillStyle = g; bgCtx.fillRect(0,0,WIDTH,HEIGHT);
 
-  const camera = new Camera(videoElement,{
-    onFrame:async()=>{
-      await hands.send({image:videoElement});
-    },
-    width:640,
-    height:480
+  for(const s of stars){
+    s.x += s.vx; s.y += s.vy;
+    if(s.x < -10) s.x = WIDTH + 10;
+    if(s.x > WIDTH + 10) s.x = -10;
+    if(s.y < -10) s.y = HEIGHT + 10;
+    if(s.y > HEIGHT + 10) s.y = -10;
+    bgCtx.beginPath();
+    bgCtx.globalAlpha = s.alpha;
+    bgCtx.fillStyle = '#dff';
+    bgCtx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+    bgCtx.fill();
+    bgCtx.globalAlpha = 1;
+  }
+  requestAnimationFrame(updateStars);
+}
+updateStars();
+
+// ---------- UI state ----------
+let ttsEnabled = true;
+let skeletonOn = true;
+let palmOn = true;
+let running = false;
+let lastSpoken = 0;
+let speakCooldown = 2500; // ms between speeches while hand present
+let detectionActive = false;
+
+// voice text
+const introText = "Halo, nama saya Arby Yukio Nugraha dan saya dari 9B.";
+
+// tiny visualizer for TTS
+function animateBars(intensity=1){
+  bars.forEach((b,i)=>{
+    const h = 6 + Math.round(Math.sin(Date.now()/120 + i) * 12 * intensity);
+    b.style.height = Math.max(4, Math.min(60, Math.abs(h))) + 'px';
+  });
+}
+
+// TTS function (uses Web Speech API)
+function speak(text){
+  if(!ttsEnabled) return;
+  if(!('speechSynthesis' in window)) return;
+  const now = Date.now();
+  if(now - lastSpoken < speakCooldown) return;
+  lastSpoken = now;
+
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'id-ID';
+  u.rate = 1;
+  u.pitch = 1;
+  speechSynthesis.cancel(); // prevent queue
+  speechSynthesis.speak(u);
+  // animate bars briefly
+  let t = 0;
+  const iv = setInterval(()=>{ animateBars(1.2); t++; if(t>18){ clearInterval(iv); animateBars(0.2); } }, 120);
+}
+
+// UI toggles
+ttsToggle.addEventListener('click', ()=>{
+  ttsEnabled = !ttsEnabled;
+  ttsToggle.textContent = `TTS: ${ttsEnabled ? 'ON' : 'OFF'}`;
+  ttsToggle.style.background = ttsEnabled ? '' : 'rgba(255,255,255,0.04)';
+});
+skeletonToggle.addEventListener('click', ()=>{ skeletonOn = !skeletonOn; skeletonToggle.textContent = `Skeleton: ${skeletonOn ? 'ON' : 'OFF'}`; skeletonToggle.style.background = skeletonOn ? '' : 'rgba(255,255,255,0.04)'; });
+palmToggle.addEventListener('click', ()=>{ palmOn = !palmOn; palmToggle.textContent = `Palm: ${palmOn ? 'ON' : 'OFF'}`; palmToggle.style.background = palmOn ? '' : 'rgba(255,255,255,0.04)'; });
+
+modeSelect.addEventListener('change', ()=>{
+  const v = modeSelect.value; mval.textContent = v;
+  if(v === 'LOW'){ speakCooldown = 3000; } else if(v === 'HIGH'){ speakCooldown = 1400; } else { speakCooldown = 2500; }
+  statusEl.textContent = `Status: mode ${v} selected`;
+});
+
+// ---------- Mediapipe & camera ----------
+const hands = new Hands({
+  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+hands.setOptions({
+  maxNumHands: 1,
+  modelComplexity: 1,
+  minDetectionConfidence: 0.6,
+  minTrackingConfidence: 0.6
+});
+hands.onResults(onResults);
+
+// use Camera util but request user-facing camera (front)
+let camera = null;
+function startCamera(){
+  if(camera) { // already started via Camera util
+    return camera;
+  }
+  camera = new Camera(videoEl, {
+    onFrame: async () => { await hands.send({ image: videoEl }); },
+    width: 640,
+    height: 480,
+    facingMode: "user"
   });
   camera.start();
+  return camera;
+}
+
+// fallback if Camera util fails: use getUserMedia and feed frames manually
+async function startCameraFallback(){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio:false });
+    videoEl.srcObject = stream;
+    await videoEl.play();
+    // manual loop to send frames to mediapipe
+    (function loop(){
+      if(videoEl.readyState >= 2){
+        hands.send({ image: videoEl }).catch(()=>{});
+      }
+      requestAnimationFrame(loop);
+    })();
+    return stream;
+  }catch(e){
+    console.error('getUserMedia fallback failed', e);
+    throw e;
+  }
+}
+
+// ---------- drawing & interaction ----------
+const clickableEls = [portfolio]; // elements that can be virtually clicked
+let lastClickTime = 0;
+function checkFingerClick(fx, fy){
+  const now = Date.now();
+  if(now - lastClickTime < 700) return;
+  clickableEls.forEach(el=>{
+    const rect = el.getBoundingClientRect();
+    if(fx > rect.left && fx < rect.right && fy > rect.top && fy < rect.bottom){
+      el.classList.add('active');
+      setTimeout(()=>el.classList.remove('active'),350);
+      try{ el.click(); }catch(e){}
+      lastClickTime = now;
+      messageBox.textContent = `Virtual klik: ${el.textContent || el.href}`;
+    }
+  });
+}
+
+let lastScroll = 0;
+function autoScroll(fy){
+  const now = Date.now();
+  if(now - lastScroll < 300) return;
+  if(fy < window.innerHeight * 0.18){
+    window.scrollBy({ top:-200, behavior:'smooth' });
+    messageBox.textContent = 'Scroll ↑';
+  } else if(fy > window.innerHeight * 0.82){
+    window.scrollBy({ top:200, behavior:'smooth' });
+    messageBox.textContent = 'Scroll ↓';
+  }
+  lastScroll = now;
+}
+
+function onResults(results){
+  // draw camera feed with subtle blend, then overlay landmarks
+  outCtx.save();
+  outCtx.clearRect(0,0,WIDTH,HEIGHT);
+
+  // draw image full-screen
+  if(results.image){
+    outCtx.drawImage(results.image, 0, 0, WIDTH, HEIGHT);
+    // tint for cosmic look
+    outCtx.fillStyle = 'rgba(10,6,18,0.18)';
+    outCtx.fillRect(0,0,WIDTH,HEIGHT);
+  }
+
+  if(results.multiHandLandmarks && results.multiHandLandmarks.length){
+    detectionActive = true;
+    statusEl.textContent = 'Status: hand detected';
+    // speak each time a hand appears (with cooldown)
+    if(ttsEnabled) speak(introText);
+
+    for(const landmarks of results.multiHandLandmarks){
+      // draw connectors & landmarks with neon style
+      drawConnectors(outCtx, landmarks, HAND_CONNECTIONS, { color: '#7be3ff', lineWidth: 3 });
+      drawLandmarks(outCtx, landmarks, { color: '#c07bff', lineWidth: 2 });
+
+      // finger tip coords (index)
+      const idx = landmarks[8];
+      const fx = idx.x * WIDTH;
+      const fy = idx.y * HEIGHT;
+      checkFingerClick(fx, fy);
+      autoScroll(fy);
+
+      // small reticle at fingertip
+      outCtx.beginPath();
+      outCtx.arc(fx, fy, 10, 0, Math.PI*2);
+      outCtx.strokeStyle = 'rgba(199,150,255,0.9)';
+      outCtx.lineWidth = 2;
+      outCtx.stroke();
+      outCtx.beginPath();
+      outCtx.arc(fx, fy, 4, 0, Math.PI*2);
+      outCtx.fillStyle = 'rgba(123,227,255,0.9)';
+      outCtx.fill();
+    }
+  } else {
+    detectionActive = false;
+    statusEl.textContent = 'Status: no hand';
+  }
+
+  outCtx.restore();
+}
+
+// ---------- start / stop control ----------
+startBtn.addEventListener('click', async ()=>{
+  if(running){
+    // stop
+    try{ if(videoEl && videoEl.srcObject){ videoEl.srcObject.getTracks().forEach(t=>t.stop()); videoEl.srcObject = null; } }catch(e){}
+    try{ camera && camera.stop && camera.stop(); }catch(e){}
+    running = false; startBtn.textContent = 'Start (Depan)'; statusEl.textContent = 'Status: stopped';
+    return;
+  }
+
+  // start
+  statusEl.textContent = 'Status: requesting camera...';
+  try{
+    // try Camera util first (convenient)
+    startCamera();
+    running = true;
+    startBtn.textContent = 'Stop';
+    statusEl.textContent = 'Status: running (Camera util)';
+  }catch(e){
+    console.warn('Camera util failed, fallback', e);
+    // fallback to getUserMedia stream + manual feed
+    try{
+      await startCameraFallback();
+      running = true;
+      startBtn.textContent = 'Stop';
+      statusEl.textContent = 'Status: running (fallback)';
+    }catch(e2){
+      statusEl.textContent = 'Status: camera error';
+      alert('Gagal akses kamera. Pastikan situs dijalankan via HTTPS dan izinkan kamera di browser.');
+      console.error(e2);
+    }
+  }
+});
+
+// small heartbeat to update debug & animate bars lightly
+setInterval(()=>{ vr.textContent = videoEl.readyState; animateBars(detectionActive?1.2:0.2); }, 260);
+
+// animate bars for voice visual
+function animateBars(intensity=0.5){
+  bars.forEach((b,i)=>{
+    const h = 6 + (Math.sin((Date.now()/180)+(i*0.6)) * 18 * intensity + Math.random()*6);
+    b.style.height = Math.max(4, Math.min(64, Math.abs(Math.round(h)))) + 'px';
+  });
+}
+
+// kick off (no auto camera start)
+mval.textContent = modeSelect.value;
 </script>
+</body>
+  </html>
